@@ -32,7 +32,7 @@ class AccountLoan(models.Model):
         "account.account",
         string="Cuenta de Sellos",
         check_company=True,
-        domain="[('account_type','=','expense'),('deprecated','=',False)]",
+        domain="[('account_type','=','expense')]",
     )
     stamp_tax_journal_id = fields.Many2one(
         "account.journal",
