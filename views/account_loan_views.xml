@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_account_loan_form_yaguven" model="ir.ui.view">
+        <field name="name">account.loan.form.yaguven</field>
+        <field name="model">account.loan</field>
+        <field name="inherit_id" ref="account_loans.account_loan_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='journal_id']" position="after">
+                <field name="default_interest_tax_ids"
+                       widget="many2many_tags"
+                       options="{'no_create': True}"
+                       readonly="state != 'draft'"/>
+            </xpath>
+            <xpath expr="//page[@name='main_page']//group[@name='loan_settings_column2']" position="after">
+                <group string="Sellos del contrato"
+                       name="yaguven_stamp_tax_group">
+                    <field name="stamp_tax_amount"
+                           readonly="state != 'draft'"/>
+                    <field name="stamp_tax_account_id"
+                           readonly="state != 'draft'"
+                           options="{'no_create': True}"/>
+                    <field name="stamp_tax_journal_id"
+                           readonly="state != 'draft'"
+                           options="{'no_create': True}"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_account_loan_line_list_yaguven" model="ir.ui.view">
+        <field name="name">account.loan.line.list.yaguven</field>
+        <field name="model">account.loan.line</field>
+        <field name="inherit_id" ref="account_loans.account_loan_line_list_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='interest']" position="after">
+                <field name="tax_ids" widget="many2many_tags" optional="hide"/>
+                <field name="tax_amount" sum="Total IVA" optional="show"/>
+                <field name="interest_with_tax" sum="Total interés c/ IVA" optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
