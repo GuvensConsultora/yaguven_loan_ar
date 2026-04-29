@@ -1,6 +1,6 @@
 {
     "name": "Yagüven — Préstamos AR (IVA + Sellos)",
-    "version": "19.0.1.0.0",
+    "version": "19.0.2.0.0",
     "category": "Accounting/Localizations/Argentina",
     "summary": "Extiende account_loans (Enterprise) con tratamiento impositivo argentino: IVA crédito fiscal sobre intereses devengados y sellos del contrato.",
     "description": """

@@ -26,11 +26,17 @@ class AccountLoanLine(models.Model):
         store=True,
         currency_field="currency_id",
     )
-    yaguven_tax_move_id = fields.Many2one(
+    yaguven_vendor_bill_id = fields.Many2one(
         "account.move",
-        string="Asiento IVA",
+        string="Factura recibida (banco)",
         readonly=True,
         copy=False,
+        help=(
+            "Factura recibida (in_invoice) que respalda el crédito fiscal de IVA "
+            "sobre el interés de la cuota. Generada en estado borrador al confirmar "
+            "el préstamo, queda pendiente de validación contra el resumen físico "
+            "del banco."
+        ),
     )
 
     @api.depends("interest", "tax_ids")
@@ -64,69 +70,52 @@ class AccountLoanLine(models.Model):
                 vals["tax_ids"] = [(6, 0, loan.default_interest_tax_ids.ids)]
         return super().create(vals_list)
 
-    def _yaguven_post_tax_move(self):
-        """Crea un asiento companion: D IVA crédito / C cuenta del diario
-        (típicamente banco). Idempotente: si ya existe el asiento vinculado,
-        no hace nada."""
+    def _yaguven_create_vendor_bill_draft(self, journal):
+        """Crea factura recibida (in_invoice) en estado borrador con la línea de
+        interés gravada. El asiento que generará al postearse es:
+
+            D <expense_account_id del préstamo> (interés)        $interest
+            D IVA crédito fiscal (de los tax_ids)                $tax_amount
+                C <cuenta a pagar del partner banco>             $interest + $tax_amount
+
+        Idempotente: si ya hay una factura vinculada, no hace nada."""
         self.ensure_one()
-        if self.yaguven_tax_move_id:
+        if self.yaguven_vendor_bill_id:
             return
-        if not self.tax_ids or not self.tax_amount:
+        if not self.tax_ids or not self.interest:
             return
         loan = self.loan_id
-        journal = loan.tax_journal_id or loan.journal_id
-        contra_account = journal.default_account_id
-        if not contra_account:
+        if not loan.partner_id:
             raise UserError(_(
-                "El diario «%(journal)s» no tiene cuenta default configurada. No "
-                "se pudo asentar el IVA s/ interés de la cuota %(seq)s del préstamo "
-                "«%(loan)s»."
-            ) % {
-                "journal": journal.display_name,
-                "seq": self.sequence,
-                "loan": loan.display_name,
-            })
-        res = self.tax_ids.compute_all(
-            self.interest, currency=self.currency_id, quantity=1.0
-        )
-        tax_lines_vals = []
-        for t in res["taxes"]:
-            tax = self.env["account.tax"].browse(t["id"])
-            tax_account = tax.invoice_repartition_line_ids.filtered(
-                lambda r: r.repartition_type == "tax"
-            ).account_id[:1]
-            if not tax_account:
-                raise UserError(_(
-                    "El impuesto «%(tax)s» no tiene cuenta de IVA configurada en "
-                    "su distribución de comprobantes."
-                ) % {"tax": tax.display_name})
-            tax_lines_vals.append((0, 0, {
-                "account_id": tax_account.id,
-                "name": _("IVA s/ interés — cuota %(seq)s — %(loan)s") % {
-                    "seq": self.sequence,
-                    "loan": loan.display_name,
-                },
-                "debit": t["amount"],
-                "credit": 0.0,
-                "tax_line_id": tax.id,
-            }))
-        total_tax = sum(t["amount"] for t in res["taxes"])
-        if not tax_lines_vals or not total_tax:
-            return
-        move = self.env["account.move"].with_company(loan.company_id).create({
-            "date": self.date,
-            "journal_id": journal.id,
+                "El préstamo «%s» no tiene partner (banco proveedor) asignado. "
+                "No se puede generar la factura recibida del banco."
+            ) % loan.display_name)
+        if not loan.expense_account_id:
+            raise UserError(_(
+                "El préstamo «%s» no tiene cuenta de gasto interés (expense_account_id) "
+                "configurada. La factura recibida no puede armarse."
+            ) % loan.display_name)
+        line_name = _(
+            "Interés préstamo %(loan)s — cuota %(seq)s (%(date)s)"
+        ) % {"loan": loan.display_name, "seq": self.sequence, "date": self.date}
+        bill_vals = {
+            "move_type": "in_invoice",
+            "partner_id": loan.partner_id.id,
             "company_id": loan.company_id.id,
-            "ref": _("IVA s/ interés — cuota %(seq)s — %(loan)s") % {
-                "seq": self.sequence,
+            "journal_id": journal.id,
+            "date": self.date,
+            "invoice_date": self.date,
+            "ref": _("Resumen %(loan)s — cuota %(seq)s") % {
                 "loan": loan.display_name,
+                "seq": self.sequence,
             },
-            "line_ids": tax_lines_vals + [(0, 0, {
-                "account_id": contra_account.id,
-                "name": _("IVA s/ interés — cuota %(seq)s") % {"seq": self.sequence},
-                "debit": 0.0,
-                "credit": total_tax,
+            "invoice_line_ids": [(0, 0, {
+                "name": line_name,
+                "account_id": loan.expense_account_id.id,
+                "quantity": 1.0,
+                "price_unit": self.interest,
+                "tax_ids": [(6, 0, self.tax_ids.ids)],
             })],
-        })
-        move.action_post()
-        self.yaguven_tax_move_id = move.id
+        }
+        bill = self.env["account.move"].with_company(loan.company_id).create(bill_vals)
+        self.yaguven_vendor_bill_id = bill.id

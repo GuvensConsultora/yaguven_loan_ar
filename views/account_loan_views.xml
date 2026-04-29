@@ -7,6 +7,12 @@
         <field name="inherit_id" ref="account_loans.account_loan_form_view"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='journal_id']" position="after">
+                <field name="partner_id"
+                       options="{'no_create': True}"
+                       readonly="state != 'draft'"/>
+                <field name="purchase_journal_id"
+                       options="{'no_create': True}"
+                       readonly="state != 'draft'"/>
                 <field name="default_interest_tax_ids"
                        widget="many2many_tags"
                        options="{'no_create': True}"
@@ -37,6 +43,7 @@
                 <field name="tax_ids" widget="many2many_tags" optional="hide"/>
                 <field name="tax_amount" sum="Total IVA" optional="show"/>
                 <field name="interest_with_tax" sum="Total interés c/ IVA" optional="hide"/>
+                <field name="yaguven_vendor_bill_id" optional="hide"/>
             </xpath>
         </field>
     </record>
